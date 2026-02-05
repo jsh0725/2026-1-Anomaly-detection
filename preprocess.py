@@ -21,23 +21,31 @@ def fit_scaler_and_create_windows(csv_path, out_dir, window_size=100, step=50):
     os.makedirs(out_dir, exist_ok=True)
     df = pd.read_csv(csv_path)
     # select numeric columns only
-    df = df.select_dtypes(include=[np.number])#불필요한 텍스트 제거
+    df = df.select_dtypes(include=[np.number])
+    # NaN 보간 (선형 보간)
+    df = df.interpolate(method='linear', limit_direction='both')
+    # 남은 NaN을 0으로 채우기
+    df = df.fillna(0)
     data = df.values.astype(float)
-    scaler = StandardScaler()#정규화, 평균 0, 표준편차 1로 변환
+    scaler = StandardScaler()
     scaler.fit(data)
     scaled = scaler.transform(data)
     windows = create_windows(scaled, window_size, step)
-    np.save(os.path.join(out_dir, "normal_windows.npy"), windows) #학습 데이터
-    joblib.dump(scaler, os.path.join(out_dir, "scaler.pkl")) #추후 evaluation에 사용할 attack.csv를 정규화할 때 normal.csv의 통계를 사용해야 데이터 분포가 일관성 있기 때문에 따로 저장
+    np.save(os.path.join(out_dir, "normal_windows.npy"), windows)
+    joblib.dump(scaler, os.path.join(out_dir, "scaler.pkl"))
     print(f"Saved {windows.shape} windows and scaler to {out_dir}")
 
 # 이미 저장된 스케일러를 사용해 다른 csv 정규화(evaluation용)
 def transform_file_to_windows(csv_path, scaler_path, out_path, window_size=100, step=50):
     df = pd.read_csv(csv_path)
     df = df.select_dtypes(include=[np.number])
+    # NaN 보간 (선형 보간)
+    df = df.interpolate(method='linear', limit_direction='both')
+    # 남은 NaN을 0으로 채우기
+    df = df.fillna(0)
     data = df.values.astype(float)
     scaler = joblib.load(scaler_path)
-    scaled = scaler.transform(data) #attack.csv 데이터로 스케일러를 재학습하지 않기 위해 fit()은 하지 않음
+    scaled = scaler.transform(data)
     windows = create_windows(scaled, window_size, step)
     np.save(out_path, windows)
     print(f"Saved windows {windows.shape} to {out_path}")
@@ -51,4 +59,17 @@ if __name__ == '__main__':
     p.add_argument('--window', type=int, default=100)
     p.add_argument('--step', type=int, default=50)
     args = p.parse_args()
-    fit_scaler_and_create_windows(args.infile, args.outdir, args.window, args.step)
+    
+    scaler_path = os.path.join(args.outdir, 'scaler.pkl')
+    
+    # 스케일러가 없으면 생성 (normal.csv 처리)
+    if not os.path.exists(scaler_path):
+        print(f"Creating scaler from {args.infile}...")
+        fit_scaler_and_create_windows(args.infile, args.outdir, args.window, args.step)
+    else:
+        # 스케일러가 있으면 사용 (attack.csv, merged.csv 등)
+        print(f"Using existing scaler from {scaler_path}...")
+        # 출력 파일명: 입력 파일명 기반 (attack.csv → attack_windows.npy)
+        basename = os.path.basename(args.infile).replace('.csv', '_windows.npy')
+        out_path = os.path.join(args.outdir, basename)
+        transform_file_to_windows(args.infile, scaler_path, out_path, args.window, args.step)

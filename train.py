@@ -5,7 +5,11 @@ import torch
 from torch.utils.data import DataLoader, TensorDataset
 from torch import optim
 
-from lstm_ae.model import LSTMAE
+from model import LSTMAE
+
+# SWaT 루트로 작업 폴더 이동
+swat_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+os.chdir(swat_root)
 
 
 def train(args):
