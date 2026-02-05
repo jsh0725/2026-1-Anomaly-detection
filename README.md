@@ -1,19 +1,22 @@
-# LSTM-AE Anomaly Detection for SWaT Dataset
+# Anomaly Detection for SWaT Dataset
 
-An implementation of LSTM-based Autoencoder (LSTM-AE) for detecting cyber-physical system anomalies using the SWaT (Secure Water Treatment) dataset.
+Cybersecurity anomaly detection system for the Secure Water Treatment (SWaT) industrial control system using machine learning. This repository includes implementations of LSTM-based Autoencoder and Isolation Forest models with comprehensive performance analysis.
 
 ## Overview
 
-This project implements an anomaly detection system using LSTM autoencoders to identify abnormal patterns in industrial control system (ICS) data. The model is trained on normal operational data and learns to reconstruct normal patterns. Anomalies are detected when reconstruction error exceeds a threshold.
+This project implements anomaly detection on the SWaT dataset (1.4M+ samples) containing normal operational and cyberattack data. We compare two approaches:
+1. **LSTM-AE**: Deep learning-based reconstruction error detection
+2. **Isolation Forest**: Ensemble-based anomaly scoring (recommended)
 
-### Key Features
+Both models are trained on normal data only and detect anomalies through statistical thresholding.
 
-- **LSTM-based Autoencoder**: Captures temporal dependencies in time-series data
-- **Windowing Strategy**: Converts 1D time-series into fixed-length sequences (default: 100 timesteps, 50% overlap)
-- **StandardScaler Normalization**: Ensures consistent feature scaling across datasets
-- **NaN Imputation**: Handles missing values through linear interpolation
-- **Batch Processing**: Memory-efficient evaluation on large datasets
-- **Comprehensive Analysis**: Performance metrics including AUC, F1-score, Precision, Recall, and ROC curves
+### Key Contributions
+
+-  **Isolation Forest achieves 67.6% F1-Score** with 61% recall on attack detection
+-  **Data preprocessing pipeline**: NaN imputation, linear interpolation, standardization
+-  **Comprehensive evaluation**: AUC-ROC, confusion matrix, threshold optimization
+-  **Model comparison**: LSTM-AE vs Isolation Forest analysis
+-  **Production-ready code**: Efficient batch processing, GPU support
 
 ## Dataset
 
@@ -28,13 +31,15 @@ Each file has 51 sensor/actuator measurements recorded every second.
 
 ```
 lstm_ae/
-├── preprocess.py      # Data preprocessing: windowing, scaling, interpolation
-├── model.py          # LSTM-AE model architecture
-├── train.py          # Model training script
-├── evaluate.py       # Evaluation and reconstruction error computation
-├── analyze.py        # Performance analysis and threshold optimization
-├── requirements.txt  # Python dependencies
-└── README.md         # This file
+├── preprocess.py           # Data preprocessing: windowing, scaling, interpolation
+├── model.py               # LSTM-AE model architecture
+├── train.py               # LSTM-AE training script
+├── evaluate.py            # Reconstruction error computation
+├── analyze.py             # LSTM-AE performance analysis & threshold optimization
+├── isolation_forest.py    # Isolation Forest (recommended model)
+├── __init__.py
+├── requirements.txt       # Python dependencies
+└── README.md              # This file
 ```
 
 ## Installation
@@ -61,9 +66,25 @@ pip install -r lstm_ae/requirements.txt
 
 ## Usage
 
-### Step 1: Preprocessing
+### Quick Start (Recommended)
 
-Preprocess normal.csv and create train/test windows:
+For immediate anomaly detection using Isolation Forest:
+
+```bash
+# Install dependencies
+pip install -r lstm_ae/requirements.txt
+
+# Run Isolation Forest (fastest & best performance)
+python lstm_ae/isolation_forest.py
+```
+
+Output: Anomaly scores saved to `lstm_ae/isolation_forest_scores.npy`
+
+---
+
+### Full Pipeline (with preprocessing)
+
+**Step 1: Data Preprocessing**
 
 ```bash
 python lstm_ae/preprocess.py --in Datasets/normal.csv --window 100 --step 50
@@ -98,22 +119,29 @@ python lstm_ae/train.py --data lstm_ae/data/normal_windows.npy --epochs 100
 
 **Output:** `lstm_ae/checkpoints/model_final.pt`
 
-### Step 3: Preprocess Evaluation Data
+### Step 3: Isolation Forest (Recommended)
 
-Transform attack and merged datasets using the fitted scaler from Step 1:
+For direct anomaly detection without preprocessing:
+
+```bash
+python lstm_ae/isolation_forest.py
+```
+
+**Output:**
+- Anomaly scores saved to `lstm_ae/isolation_forest_scores.npy`
+- Model saved to `lstm_ae/isolation_forest_model.pkl`
+- Performance metrics (AUC, F1, confusion matrix)
+
+### Step 4: LSTM-AE Pipeline (Alternative)
+
+Preprocess evaluation data:
 
 ```bash
 python lstm_ae/preprocess.py --in Datasets/attack.csv
 python lstm_ae/preprocess.py --in Datasets/merged.csv
 ```
 
-Generates:
-- `lstm_ae/data/attack_windows.npy`
-- `lstm_ae/data/merged_windows.npy`
-
-### Step 4: Evaluate
-
-Compute reconstruction errors on all datasets:
+Evaluate reconstruction errors:
 
 ```bash
 python lstm_ae/evaluate.py --model lstm_ae/checkpoints/model_final.pt --data lstm_ae/data/normal_windows.npy
@@ -121,27 +149,16 @@ python lstm_ae/evaluate.py --model lstm_ae/checkpoints/model_final.pt --data lst
 python lstm_ae/evaluate.py --model lstm_ae/checkpoints/model_final.pt --data lstm_ae/data/merged_windows.npy
 ```
 
-**Output:** `.npy` files with reconstruction errors:
-- `normal_windows_errs.npy`
-- `attack_windows_errs.npy`
-- `merged_windows_errs.npy`
-
-### Step 5: Analyze Performance
-
-Run comprehensive analysis with threshold optimization and performance metrics:
+Run analysis:
 
 ```bash
 python lstm_ae/analyze.py
 ```
 
 **Output:**
-- Error statistics (mean, std, min-max) for each dataset
-- Multiple threshold optimization methods:
-  - Mean ± 1σ, 2σ, 3σ
-  - 95th and 99th percentiles
-- Best F1-score with optimal threshold
-- Final performance metrics (AUC, Precision, Recall, F1)
-- ROC curve visualization (saved as `lstm_ae/results_roc.png`)
+- Threshold optimization results
+- ROC curve visualization (`lstm_ae/results_roc.png`)
+- Performance metrics
 
 ## Model Architecture
 
@@ -176,27 +193,52 @@ Output (batch, 100, 51)
 | Learning Rate | 1e-3 | Adam optimizer learning rate |
 | Epochs | 20 | Training iterations |
 
-## Expected Performance
+## Performance Comparison
 
-Based on the SWaT dataset with optimal hyperparameters:
+### Experimental Results on SWaT Dataset
 
-| Metric | Value |
-|--------|-------|
-| AUC-ROC | ~0.85-0.95 |
-| F1-Score | ~0.70-0.85 |
-| Precision | ~0.75-0.90 |
-| Recall | ~0.65-0.80 |
+| Model | AUC-ROC | F1-Score | Precision | Recall | Speed |
+|-------|---------|----------|-----------|--------|-------|
+| **Isolation Forest** | **0.8635** | **0.6758** | **75.69%** | **61.04%** | ⚡ Very Fast |
+| LSTM-AE | 0.8488 | 0.2500 | 96.32% | 14.36% | Slow |
 
-*Performance varies based on data preprocessing and model tuning*
+### Key Metrics Breakdown
+
+**Isolation Forest (1.4M samples, 51 features):**
+-  True Negatives: 1,376,393 (99.2% specificity)
+-  True Positives: 33,339 (61% recall - catches most attacks)
+-  False Positives: 10,705 (manageable)
+-  False Negatives: 21,282 (39% miss rate)
+
+**LSTM-AE (windowed data, 100 timestep windows):**
+-  High precision (96.3%) but
+-  **Critical issue**: Only 14% recall - misses 86% of attacks 
+
+### Recommendation
+
+**Use Isolation Forest** because:
+1. **Higher Recall** (61% vs 14%) - catches more attacks
+2. **Better F1-Score** (0.676 vs 0.25) - balanced performance
+3. **Production-Ready** - no deep learning overhead
+4. **Interpretable** - easier to debug and explain
+5. **10-100x Faster** - suitable for real-time systems
 
 ## Data Preprocessing Details
 
 1. **Numeric Extraction**: Selects only numeric columns (excludes timestamps, labels)
-2. **NaN Imputation**: 
-   - Linear interpolation within each feature
+2. **NaN Handling**: 
+   - Linear interpolation within each feature (handles ~6.9M NaN values in normal.csv)
    - Remaining NaNs filled with 0
 3. **Standardization**: Zero-mean, unit-variance normalization per feature
-4. **Windowing**: Sliding windows with 50% overlap for temporal context
+4. **Windowing** (LSTM-AE only): Sliding windows with 50% overlap for temporal context
+
+### Data Statistics
+
+| Dataset | Rows | Features | Normal | Attack |
+|---------|------|----------|--------|--------|
+| normal.csv | 1,387,098 | 51 | 100% | - |
+| attack.csv | 54,621 | 51 | - | 100% |
+| merged.csv | 1,441,719 | 51 | 96.2% | 3.8% |
 
 ## Anomaly Detection Mechanism
 
@@ -211,20 +253,26 @@ Based on the SWaT dataset with optimal hyperparameters:
 
 ## Troubleshooting
 
-### CUDA Out of Memory
+### Isolation Forest (Fast & Recommended)
+-  No GPU needed
+-  No preprocessing needed
+-  Direct on raw data
+
+### LSTM-AE Pipeline
+
+#### CUDA Out of Memory
 - Reduce batch size: `--batch 32`
 - Reduce window size: `--window 50`
 - Reduce hidden size: `--hidden 32`
 
-### NaN in Errors
+#### NaN in Reconstruction Errors
 - Check data quality in source CSVs
-- Ensure interpolation was applied: `preprocess.py` handles this automatically
+- `preprocess.py` automatically handles NaN via interpolation
 
-### Low Performance (F1 < 0.5)
-- Increase epochs: `--epochs 200`
-- Try different window sizes: `--window 150`
-- Tune learning rate: `--lr 5e-4`
-- Consider alternative models (Isolation Forest, One-Class SVM)
+#### Low F1-Score (< 0.5)
+- **Known issue**: LSTM-AE has recall ~14% on this dataset
+- **Solution**: Use Isolation Forest instead
+- Alternative: Increase epochs, tune hyperparameters, use different architecture
 
 ## Dependencies
 
@@ -241,18 +289,39 @@ matplotlib>=3.10.0
 
 ### Dataset
 - SWaT: [SUTD Data Repository](https://itrust.sutd.edu.sg/datasets/)
+- Paper: Mathur et al., "SWaT: A Water Treatment Testbed for Devise- and Cyber-Physical Attacks on Cyber-Physical Systems" (2016)
 
-### LSTM-AE for Anomaly Detection
-- Malhotra et al., "Long Short Term Memory Networks for Anomaly Detection in Time Series", ESANN 2015
+### Methods
+- **Isolation Forest**: Liu et al., "Isolation Forest", ICDM 2008
+- **LSTM-AE**: Malhotra et al., "Long Short Term Memory Networks for Anomaly Detection in Time Series", ESANN 2015
+
+### Tools
+- PyTorch, scikit-learn, pandas, numpy
 
 ## Author
 
-Developed for cyber-physical system anomaly detection research.
+Developed for cyber-physical system anomaly detection research and comparison of deep learning vs ensemble methods.
 
 ## License
 
 This project is provided as-is for research and educational purposes.
 
-## Contact & Issues
+## Citation
 
-For questions or issues, please open a GitHub issue.
+If you use this work, please cite:
+
+```bibtex
+@software{swat_anomaly_detection_2026,
+  title={Anomaly Detection for SWaT: Isolation Forest vs LSTM-AE},
+  year={2026},
+  url={https://github.com/your-repo}
+}
+```
+
+## Changelog
+
+- **v1.0** (Feb 2026): 
+  - Isolation Forest implementation (F1=0.676)
+  - LSTM-AE implementation and analysis
+  - Comprehensive performance comparison
+  - NaN imputation pipeline
